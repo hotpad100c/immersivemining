@@ -21,17 +21,19 @@ import net.minecraft.client.renderer.blockentity.BlockEntityRenderDispatcher;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.client.resources.model.ModelBakery;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.server.level.BlockDestructionProgress;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.level.BlockAndTintGetter;
-import net.minecraft.world.level.block.BeaconBlock;
-import net.minecraft.world.level.block.BedBlock;
-import net.minecraft.world.level.block.ChestBlock;
-import net.minecraft.world.level.block.RenderShape;
+import net.minecraft.world.level.block.*;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.piston.PistonBaseBlock;
+import net.minecraft.world.level.block.piston.PistonHeadBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.ChestType;
+import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Math;
 import org.joml.Vector3d;
@@ -78,7 +80,40 @@ public class ImmersiveMining implements ModInitializer {
 	}
 	public static boolean shouldRenderBlock(BlockPos pos) {
 		Minecraft mc = Minecraft.getInstance();
-		return !blockShakeStateMap.containsKey(pos.immutable());
+        assert mc.level != null;
+		boolean diggingThis= blockShakeStateMap.containsKey(pos.immutable());
+        BlockState state = mc.level.getBlockState(pos);
+		if(state.getBlock() instanceof BedBlock){
+			boolean diggingNeighbor = blockShakeStateMap.containsKey(pos.relative(BedBlock.getConnectedDirection(state)));
+			return !(diggingNeighbor || diggingThis);
+		}
+		if(state.getBlock() instanceof DoorBlock){
+			boolean diggingNeighbor = blockShakeStateMap.containsKey(pos.relative(state.getValue(DoorBlock.HALF).getDirectionToOther()));
+			return !(diggingNeighbor || diggingThis);
+		}
+		if(state.getBlock() instanceof ChestBlock && state.getValue(ChestBlock.TYPE) != ChestType.SINGLE){
+			boolean diggingNeighbor = blockShakeStateMap.containsKey(pos.relative(ChestBlock.getConnectedDirection(state)));
+			return !(diggingNeighbor || diggingThis);
+		}
+
+		if (state.getBlock() instanceof PistonBaseBlock) {
+			BlockPos posHead = pos.relative(state.getValue(PistonBaseBlock.FACING));
+			BlockState head = mc.level.getBlockState(posHead);
+			if(head.getBlock() instanceof PistonHeadBlock && head.getValue(PistonHeadBlock.FACING) == state.getValue(PistonBaseBlock.FACING)){
+				boolean diggingNeighbor = blockShakeStateMap.containsKey(posHead);
+				return !(diggingNeighbor || diggingThis);
+			}
+		}
+		if(state.getBlock() instanceof PistonHeadBlock){
+			BlockPos posBase = pos.relative(state.getValue(PistonBaseBlock.FACING).getOpposite());
+			BlockState base = mc.level.getBlockState(posBase);
+			if(base.getBlock() instanceof PistonBaseBlock && base.getValue(PistonBaseBlock.FACING) == state.getValue(PistonHeadBlock.FACING)){
+				boolean diggingNeighbor = blockShakeStateMap.containsKey(posBase);
+				return !(diggingNeighbor || diggingThis);
+			}
+		}
+
+		return !diggingThis;
 	}
 	public static void blockBreakStarted(BlockPos pos, int breakId){
 		blockShakeStateMap.put(pos.immutable(),new BlockShakeState());
@@ -89,7 +124,7 @@ public class ImmersiveMining implements ModInitializer {
 	}
 	public static void refreshChunkByPos(BlockPos blockPos){
 		Minecraft minecraft = Minecraft.getInstance();
-		minecraft.levelRenderer.setBlocksDirty(blockPos.getX(), blockPos.getY(), blockPos.getZ(), blockPos.getX(), blockPos.getY(), blockPos.getZ());
+		minecraft.levelRenderer.setBlocksDirty(blockPos.getX()-3, blockPos.getY()-3, blockPos.getZ()-3, blockPos.getX()+3, blockPos.getY()+3, blockPos.getZ()+3);
 
 	}
 	public static void renderBlockDestroyAnimation(
@@ -114,7 +149,38 @@ public class ImmersiveMining implements ModInitializer {
 				pos.getY() - cam.y,
 				pos.getZ() - cam.z
 		);
-		poseStack.translate(0.5, 0.5, 0.5);
+
+		Vec3 pivotPoint = new Vec3(0.5, 0.5, 0.5);
+
+		if (blockState.getBlock() instanceof DoorBlock) {
+
+			pivotPoint = pivotPoint.relative(blockState.getValue(DoorBlock.HALF).getDirectionToOther(), 0.5);
+		}
+		else if (blockState.getBlock() instanceof ChestBlock && blockState.getValue(ChestBlock.TYPE) != ChestType.SINGLE) {
+
+			pivotPoint = pivotPoint.relative(ChestBlock.getConnectedDirection(blockState), 0.5);
+		}
+		else if (blockState.getBlock() instanceof BedBlock) {
+
+			pivotPoint = pivotPoint.relative(BedBlock.getConnectedDirection(blockState), 0.5);
+		}
+		else if (blockState.getBlock() instanceof PistonBaseBlock) {
+			BlockPos posHead = pos.relative(blockState.getValue(PistonBaseBlock.FACING));
+			BlockState head = mc.level.getBlockState(posHead);
+			if(head.getBlock() instanceof PistonHeadBlock && head.getValue(PistonHeadBlock.FACING) == blockState.getValue(PistonBaseBlock.FACING)){
+				pivotPoint = pivotPoint.relative(blockState.getValue(PistonBaseBlock.FACING), 0.5);
+			}
+		}
+		else if(blockState.getBlock() instanceof PistonHeadBlock){
+			BlockPos posBase = pos.relative(blockState.getValue(PistonBaseBlock.FACING).getOpposite());
+			BlockState base = mc.level.getBlockState(posBase);
+			if(base.getBlock() instanceof PistonBaseBlock && base.getValue(PistonBaseBlock.FACING) == blockState.getValue(PistonHeadBlock.FACING)){
+				pivotPoint = pivotPoint.relative(blockState.getValue(PistonBaseBlock.FACING), 0.5);
+			}
+		}
+
+
+		poseStack.translate(pivotPoint);
 
 		float delta = Minecraft.getInstance().getDeltaTracker().getGameTimeDeltaPartialTick(false);
 		Vector3d jitter = blockShakeState.getJitter(delta);
@@ -124,7 +190,7 @@ public class ImmersiveMining implements ModInitializer {
 		poseStack.mulPose(Axis.ZP.rotationDegrees((float) jitter.z()));
 		poseStack.scale(size, size, size);
 
-		poseStack.translate(-0.5, -0.5, -0.5);
+		poseStack.translate(pivotPoint.reverse());
 
 		renderBreakingBlock(mc,poseStack,camera,bufferSource,blockState,pos,light,blockDestructionProgress);
 
@@ -164,17 +230,89 @@ public class ImmersiveMining implements ModInitializer {
 		RenderShape renderShape = blockState.getRenderShape();
 		BlockRenderDispatcher dispatcher = mc.getBlockRenderer();
 
+		VertexConsumer vertexConsumer = new SheetedDecalTextureGenerator(multiBufferSource.getBuffer(ModelBakery.DESTROY_TYPES.get(blockDestructionProgress.getProgress())), poseStack.last(), 1.0F);
+		renderBatched(dispatcher, blockState,pos,mc.level,poseStack,vertexConsumer,false,mc.level.getRandom());
+
 		if (renderShape == RenderShape.MODEL && !(blockState.getBlock() instanceof ChestBlock) && !(blockState.getBlock() instanceof BedBlock)) {
-			renderBatched(dispatcher, blockState,pos,mc.level,poseStack,multiBufferSource.getBuffer(ItemBlockRenderTypes.getRenderType(blockState)),false,mc.level.getRandom());
+			renderBatched(dispatcher, blockState,pos,mc.level,poseStack,multiBufferSource.getBuffer(RenderType.translucentMovingBlock()),false,mc.level.getRandom());
 			((BlockRendererAccessor)dispatcher).getSpecialBlockModelRenderer().get().renderByBlock(blockState.getBlock(), ItemDisplayContext.NONE, poseStack, multiBufferSource, LightTexture.FULL_BLOCK, OverlayTexture.NO_OVERLAY);
+
+			if (blockState.getBlock() instanceof DoorBlock) {
+				BlockPos pos1 = pos.relative(blockState.getValue(DoorBlock.HALF).getDirectionToOther());
+				BlockState blockState1 = mc.level.getBlockState(pos1);
+				float dir = blockState.getValue(DoorBlock.HALF) == DoubleBlockHalf.LOWER ? 1 : -1;
+				poseStack.translate(0,dir,0);
+				renderBatched(dispatcher, blockState1,pos1,mc.level,poseStack,multiBufferSource.getBuffer(ItemBlockRenderTypes.getChunkRenderType(blockState1)),false,mc.level.getRandom());
+				((BlockRendererAccessor)dispatcher).getSpecialBlockModelRenderer().get().renderByBlock(blockState1.getBlock(), ItemDisplayContext.NONE, poseStack, multiBufferSource, LightTexture.FULL_BLOCK, OverlayTexture.NO_OVERLAY);
+			}else if (blockState.getBlock() instanceof PistonBaseBlock) {
+				Direction facing = blockState.getValue(PistonBaseBlock.FACING);
+				BlockPos posHead = pos.relative(facing);
+				BlockState head = mc.level.getBlockState(posHead);
+
+				if (head.getBlock() instanceof PistonHeadBlock
+						&& head.getValue(PistonHeadBlock.FACING) == facing) {
+
+					poseStack.translate(
+							facing.getStepX(),
+							facing.getStepY(),
+							facing.getStepZ()
+					);
+
+					renderBatched(dispatcher, head, posHead, mc.level, poseStack,
+							multiBufferSource.getBuffer(ItemBlockRenderTypes.getChunkRenderType(head)),
+							false, mc.level.getRandom());
+
+					((BlockRendererAccessor) dispatcher).getSpecialBlockModelRenderer().get()
+							.renderByBlock(head.getBlock(), ItemDisplayContext.NONE,
+									poseStack, multiBufferSource,
+									LightTexture.FULL_BLOCK, OverlayTexture.NO_OVERLAY);
+				}
+			}
+			else if (blockState.getBlock() instanceof PistonHeadBlock) {
+				Direction facing = blockState.getValue(PistonHeadBlock.FACING);
+				BlockPos posBase = pos.relative(facing.getOpposite());
+				BlockState base = mc.level.getBlockState(posBase);
+
+				if (base.getBlock() instanceof PistonBaseBlock
+						&& base.getValue(PistonBaseBlock.FACING) == facing) {
+
+					poseStack.translate(
+							-facing.getStepX(),
+							-facing.getStepY(),
+							-facing.getStepZ()
+					);
+
+					renderBatched(dispatcher, base, posBase, mc.level, poseStack,
+							multiBufferSource.getBuffer(ItemBlockRenderTypes.getChunkRenderType(base)),
+							false, mc.level.getRandom());
+
+					((BlockRendererAccessor) dispatcher).getSpecialBlockModelRenderer().get()
+							.renderByBlock(base.getBlock(), ItemDisplayContext.NONE,
+									poseStack, multiBufferSource,
+									LightTexture.FULL_BLOCK, OverlayTexture.NO_OVERLAY);
+				}
+			}
+
 		}
 		if(blockState.hasBlockEntity()){
 			BlockEntity blockEntity = mc.level.getBlockEntity(pos);
 			BlockEntityRenderDispatcher blockEntityRenderDispatcher = mc.getBlockEntityRenderDispatcher();
 			blockEntityRenderDispatcher.render(blockEntity,mc.getDeltaTracker().getGameTimeDeltaTicks(),poseStack,multiBufferSource);
+
+			if (blockState.getBlock() instanceof ChestBlock && blockState.getValue(ChestBlock.TYPE) != ChestType.SINGLE) {
+				BlockPos pos1 = pos.relative((ChestBlock.getConnectedDirection(blockState)));
+				poseStack.translate(pos1.getX() - pos.getX(),0,pos1.getZ() - pos.getZ());
+				BlockEntity blockEntity1 = mc.level.getBlockEntity(pos1);
+				blockEntityRenderDispatcher.render(blockEntity1,mc.getDeltaTracker().getGameTimeDeltaTicks(),poseStack,multiBufferSource);
+			}
+			else if (blockState.getBlock() instanceof BedBlock) {
+				BlockPos pos1 = pos.relative((BedBlock.getConnectedDirection(blockState)));
+				poseStack.translate(pos1.getX() - pos.getX(),0,pos1.getZ() - pos.getZ());
+				BlockEntity blockEntity1 = mc.level.getBlockEntity(pos1);
+				blockEntityRenderDispatcher.render(blockEntity1,mc.getDeltaTracker().getGameTimeDeltaTicks(),poseStack,multiBufferSource);
+			}
+
 		}
-		VertexConsumer vertexConsumer = new SheetedDecalTextureGenerator(multiBufferSource.getBuffer(ModelBakery.DESTROY_TYPES.get(blockDestructionProgress.getProgress())), poseStack.last(), 1.0F);
-		renderBatched(dispatcher, blockState,pos,mc.level,poseStack,vertexConsumer,false,mc.level.getRandom());
 
 	}
 	public static void renderBatched(BlockRenderDispatcher dispatcher, BlockState blockState, BlockPos blockPos, BlockAndTintGetter blockAndTintGetter, PoseStack poseStack, VertexConsumer vertexConsumer, boolean bl, RandomSource randomSource) {
@@ -213,7 +351,7 @@ public class ImmersiveMining implements ModInitializer {
 				this.time += (progress - time)*0.1f;
 			}
 			this.lastJitter = this.currentJitter;
-			float jitter = Mth.sin(this.time) * this.time;
+			float jitter =  (float) Math.sin(progress * Math.PI * time);
             assert Minecraft.getInstance().level != null;
             RandomSource randomSource = Minecraft.getInstance().level.getRandom();
 			dirX = randomSource.nextBoolean()?dirX:-dirX;
