@@ -3,15 +3,15 @@
 	"id": "immersivemining",
 	"version": "${version}",
 	"name": "ImmersiveMining",
-	"description": "This is an example description! Tell everyone what your mod is about!",
+	"description": "Cool mining animation...",
 	"authors": [
-		"Me!"
+		"Ryan100C"
 	],
 	"contact": {
-		"homepage": "",
-		"sources": "https://github.com/FabricMC/fabric-example-mod"
+		"homepage": "https://github.com/hotpad100c/immersivemining",
+		"sources": "https://github.com/hotpad100c/immersivemining"
 	},
-	"license": "CC0-1.0",
+	"license": "MIT",
 	"icon": "assets/immersivemining/icon.png",
 	"environment": "*",
 	"entrypoints": {
