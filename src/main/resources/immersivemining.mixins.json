@@ -1,0 +1,24 @@
+{
+  "required": true,
+  "package": "ml.mypals.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "LevelRendererMixin",
+    "sodium.BlockOcclusionCacheMixin",
+    "sodium.ChunkBuilderMeshingTaskMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
+  },
+  "client": [
+    "BlockRendererAccessor",
+    "ClientLevelMixin",
+    "LevelRendererAccessor",
+    "fabric.BlockRenderInfoMixin",
+    "vanilla.BlockModelRendererMixin",
+    "vanilla.SectionBuilderMixin"
+  ]
+}
